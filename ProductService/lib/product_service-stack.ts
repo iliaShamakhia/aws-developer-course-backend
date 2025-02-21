@@ -38,7 +38,7 @@ export class ProductServiceStack extends cdk.Stack {
     const products = api.root.addResource('products');
     products.addMethod('GET', getProductsListIntegration, {
       authorizationType: AuthorizationType.NONE,
-      methodResponses: [{ statusCode: '200' }],
+      methodResponses: [{ statusCode: '200' }, { statusCode: '404' }],
     });
 
     const product = products.addResource('{productId}');
