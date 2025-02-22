@@ -1,17 +1,45 @@
-// import * as cdk from 'aws-cdk-lib';
-// import { Template } from 'aws-cdk-lib/assertions';
-// import * as ProductService from '../lib/product_service-stack';
+import { handler as getProductsListHandler } from '../Handlers/getProductsList';
+import { handler as getProductsByIdHandler } from '../Handlers/getProductsById';
+import { APIGatewayProxyEvent, Context } from 'aws-lambda';
 
-// example test. To run these tests, uncomment this file along with the
-// example resource in lib/product_service-stack.ts
-test('SQS Queue Created', () => {
-//   const app = new cdk.App();
-//     // WHEN
-//   const stack = new ProductService.ProductServiceStack(app, 'MyTestStack');
-//     // THEN
-//   const template = Template.fromStack(stack);
+describe('getProductsListsHandler', () => {
+    it('should return a list of products', async () => {
+      const event: APIGatewayProxyEvent = {} as any;
+  
+      const response = await getProductsListHandler(event);
 
-//   template.hasResourceProperties('AWS::SQS::Queue', {
-//     VisibilityTimeout: 300
-//   });
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(Array.isArray(body)).toBe(true);
+      expect(body.length).toBeGreaterThan(0);
+    });
+});
+
+describe('getProductByIdHandler', () => {
+    it('should return a product by ID', async () => {
+      const testProductId = '1';
+      const event: APIGatewayProxyEvent = {
+        pathParameters: { productId: testProductId },
+      } as any;
+  
+      const response = await getProductsByIdHandler(event);
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body).toBeInstanceOf(Object);
+      expect(body.title).toBe('Product 1');
+    });
+
+    it('should return 404 status for non-existing product', async () => {
+        const testProductId = '10';
+        const event: APIGatewayProxyEvent = {
+          pathParameters: { id: testProductId },
+        } as any;
+    
+        const response = await getProductsByIdHandler(event);
+    
+        expect(response.statusCode).toBe(404);
+        const body = JSON.parse(response.body);
+        expect(body).toBeInstanceOf(Object);
+        expect(body.message).toBe('Product not found');
+    });
 });
