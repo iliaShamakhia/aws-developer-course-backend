@@ -5,13 +5,15 @@ const dynamodb = new DynamoDB.DocumentClient();
 export const handler = async (event: any) => {
   const productId = event.pathParameters?.productId;
 
+  console.log("Request for product with id: ", productId);
+
   const headers = {
     "Access-Control-Allow-Origin": '*'
   }
 
   try {
     const productResponse = await dynamodb.query({
-        TableName: process.env.PRODUCTS_TABLE || '',
+        TableName: process.env.PRODUCTS_TABLE!,
         KeyConditionExpression: 'id = :id',
         ExpressionAttributeValues: {
             ':id': productId
@@ -29,7 +31,7 @@ export const handler = async (event: any) => {
     }
 
     const quantityResponse = await dynamodb.query({
-        TableName: process.env.STOCKS_TABLE || '',
+        TableName: process.env.STOCKS_TABLE!,
         KeyConditionExpression: 'product_id = :product_id',
         ExpressionAttributeValues: {
             ':product_id': productId

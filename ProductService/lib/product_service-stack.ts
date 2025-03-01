@@ -35,6 +35,12 @@ export class ProductServiceStack extends cdk.Stack {
       ...nodejsFunctionProps
     });
 
+    const createProductLambda = new lambda_nodejs.NodejsFunction(this, 'CreateProductHandler', {
+      entry: './Handlers/createProduct.ts',
+      handler: 'handler',
+      ...nodejsFunctionProps
+    });
+
     const api = new RestApi(this, 'productsApi', {
       restApiName: 'Products Service'
     });
@@ -43,17 +49,23 @@ export class ProductServiceStack extends cdk.Stack {
 
     const getProductsByIdIntegration = new LambdaIntegration(getProductsByIdLambda);
 
+    const createProductIntegration = new LambdaIntegration(createProductLambda);
+
     const products = api.root.addResource('products');
     products.addMethod('GET', getProductsListIntegration, {
       authorizationType: AuthorizationType.NONE,
-      methodResponses: [{ statusCode: '200' }, { statusCode: '404' }],
+      methodResponses: [{ statusCode: '200' }, { statusCode: '404' }, { statusCode: '500' }],
+    });
+
+    products.addMethod('POST', createProductIntegration, {
+      authorizationType: AuthorizationType.NONE,
+      methodResponses: [{ statusCode: '201' }, { statusCode: '400' }, { statusCode: '500' }],
     });
 
     const product = products.addResource('{productId}');
     product.addMethod('GET', getProductsByIdIntegration, {
       authorizationType: AuthorizationType.NONE,
-      methodResponses: [{ statusCode: '200' }, { statusCode: '404' }],
+      methodResponses: [{ statusCode: '200' }, { statusCode: '404' }, { statusCode: '500' }],
     });
-    
   }
 }

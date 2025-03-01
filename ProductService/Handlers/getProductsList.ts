@@ -4,12 +4,14 @@ const dynamodb = new DynamoDB.DocumentClient();
 
 export const handler = async (_: any) => {
 
+  console.log("Request for products initialized", _);
+
   const headers = {
     "Access-Control-Allow-Origin": '*'
   }
 
   try {
-    const productResponse = await dynamodb.scan({ TableName: process.env.PRODUCTS_TABLE || '' }).promise();
+    const productResponse = await dynamodb.scan({ TableName: process.env.PRODUCTS_TABLE! }).promise();
     const products = productResponse.Items;
 
     if (!products) {
@@ -20,7 +22,7 @@ export const handler = async (_: any) => {
       };
     }
 
-    const quantityResponse = await dynamodb.scan({ TableName: process.env.STOCKS_TABLE || '' }).promise();
+    const quantityResponse = await dynamodb.scan({ TableName: process.env.STOCKS_TABLE! }).promise();
     const quantities = quantityResponse.Items;
 
     const quantityDict: { [key: string]: number } = {};
