@@ -59,7 +59,7 @@ export class ProductServiceStack extends cdk.Stack {
 
     products.addMethod('POST', createProductIntegration, {
       authorizationType: AuthorizationType.NONE,
-      methodResponses: [{ statusCode: '201' }, { statusCode: '400' }, { statusCode: '500' }],
+      methodResponses: [{ statusCode: '200' }, { statusCode: '400' }, { statusCode: '500' }],
     });
 
     const product = products.addResource('{productId}');
