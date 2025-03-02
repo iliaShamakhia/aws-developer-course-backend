@@ -50,7 +50,7 @@ export const handler = async (event: any) => {
     try {
         await dynamodb.transactWrite(transactParams).promise();
         return {
-            statusCode: 200,
+            statusCode: 201,
             headers,
             body: JSON.stringify({ message: 'Success', productId }),
         };

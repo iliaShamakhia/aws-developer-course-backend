@@ -1,6 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { RestApi, LambdaIntegration, AuthorizationType } from 'aws-cdk-lib/aws-apigateway';
+import { RestApi, LambdaIntegration, AuthorizationType, Cors } from 'aws-cdk-lib/aws-apigateway';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambda_nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as iam from 'aws-cdk-lib/aws-iam';
@@ -42,7 +42,10 @@ export class ProductServiceStack extends cdk.Stack {
     });
 
     const api = new RestApi(this, 'productsApi', {
-      restApiName: 'Products Service'
+      restApiName: 'Products Service',
+      defaultCorsPreflightOptions: {
+        allowOrigins: Cors.ALL_ORIGINS
+      }
     });
 
     const getProductsListIntegration = new LambdaIntegration(getProductsListLambda);
@@ -59,7 +62,7 @@ export class ProductServiceStack extends cdk.Stack {
 
     products.addMethod('POST', createProductIntegration, {
       authorizationType: AuthorizationType.NONE,
-      methodResponses: [{ statusCode: '200' }, { statusCode: '400' }, { statusCode: '500' }],
+      methodResponses: [{ statusCode: '201' }, { statusCode: '400' }, { statusCode: '500' }],
     });
 
     const product = products.addResource('{productId}');
