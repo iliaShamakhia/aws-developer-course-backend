@@ -4,15 +4,22 @@ import { v4 as uuidv4 } from 'uuid';
 const dynamodb = new DynamoDB.DocumentClient();
 
 export const handler = async (event: any) => {
-    const { title, description, price, count } = JSON.parse(event.body);
-
-    console.log("Request body: ", { title, description, price, count });
-
     const headers = {
-        "Access-Control-Allow-Origin": '*'
+      "Access-Control-Allow-Origin": '*'
     }
 
-    if (!title || !description || !price || !count) {
+    if(!event.body){
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ message: 'Invalid input' }),
+      };
+    }
+    const { title, description, price, count } = JSON.parse(event.body);
+
+    console.log("Request object: ", event);
+
+    if (!title || !description || !price || !count || isNaN(count) || count < 0 || isNaN(price) || price < 0) {
         return {
           statusCode: 400,
           headers,

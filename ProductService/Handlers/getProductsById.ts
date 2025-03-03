@@ -5,7 +5,7 @@ const dynamodb = new DynamoDB.DocumentClient();
 export const handler = async (event: any) => {
   const productId = event.pathParameters?.productId;
 
-  console.log("Request for product with id: ", productId);
+  console.log("Request for all products: ", event);
 
   const headers = {
     "Access-Control-Allow-Origin": '*'
