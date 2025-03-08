@@ -61,16 +61,12 @@ export const handler = async (event: any) => {
 
                 const s3Stream = stringToStream(objectAsString);
 
-                const results: any = [];
-
                 s3Stream.pipe(csv())
                     .on('data', (data: any) => {
-                        results.push(data);
                         console.log('CSV Record:', data);
                     })
                     .on('end', async () => {
 
-                        console.log('CSV parsing finished.', results);
                         const parsedKey = key.replace('uploaded/', 'parsed/');
 
                         await S3client.send(
