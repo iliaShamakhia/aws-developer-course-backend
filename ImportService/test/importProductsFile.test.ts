@@ -1,44 +1,41 @@
-import { handler } from '../Handlers/importProductsFile';
-import { S3Client } from '@aws-sdk/client-s3';
+import { handler } from "../Handlers/importProductsFile";
+import { APIGatewayProxyEvent } from "aws-lambda";
+import { mockClient } from "aws-sdk-client-mock";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
-jest.mock('@aws-sdk/client-s3', () => ({
-  S3Client: jest.fn(),
-  PutObjectCommand: jest.fn(),
-}));
+const s3Mock = mockClient(S3Client);
 
 jest.mock('@aws-sdk/s3-request-presigner', () => ({
-  getSignedUrl: jest.fn(),
+  getSignedUrl: jest.fn(() => 'https://testSignedUrl'),
 }));
 
-describe('importProductsFile', () => {
-  it('should return a valid response on success', async () => {
-    const mockGetSignedUrl = jest.fn().mockResolvedValue('mocked-signed-url');
-    (S3Client as jest.Mock).mockImplementation(() => ({}));
-    require('@aws-sdk/s3-request-presigner').getSignedUrl = mockGetSignedUrl;
 
-    const result = await handler({ fileName: 'example.csv' });
-
-    expect(result.statusCode).toBe(200);
-    expect(result.headers).toBeDefined();
-    expect(result.body).toBeDefined();
-    const body = JSON.parse(result.body);
-    expect(body.s3UploadSignedUrl).toBe('mocked-signed-url');
+describe("importProductsFile", () => {
+  beforeEach(() => {
+    s3Mock.reset();
   });
 
-  it('should return an error response on failure', async () => {
-        (S3Client as jest.Mock).mockImplementation(() => ({
-    }));
+  it("should return a signed URL for a valid file name", async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
 
-    require('@aws-sdk/s3-request-presigner').getSignedUrl = jest
-      .fn()
-      .mockRejectedValue(new Error('mocked-error'));
+    const event = {
+      queryStringParameters: { name: "test.csv" },
+    } as unknown as APIGatewayProxyEvent;
 
-    const result = await handler({ fileName: 'example.csv' });
+    const response = await handler(event);
 
-    expect(result.statusCode).toBe(500);
-    expect(result.headers).toBeDefined();
-    expect(result.body).toBeDefined();
-    const body = JSON.parse(result.body);
-    expect(body.message).toBe('ERROR create Signed Upload URL');
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain("https://");
+  });
+
+  it("should return 400 if no file name is provided", async () => {
+    const event = {
+      queryStringParameters: {},
+    } as unknown as APIGatewayProxyEvent;
+
+    const response = await handler(event);
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toContain("Wrong file format or missing query parameter");
   });
 });

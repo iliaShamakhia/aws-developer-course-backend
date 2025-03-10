@@ -1,115 +1,64 @@
-import CSVFileValidator from 'csv-file-validator';
 import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { S3 } from 'aws-sdk';
 import { Readable } from 'stream';
 const csv = require('csv-parser');
 
-const headers = {
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
-}
-
-const validatorConfig = {
-    headers: [
-      { name: 'title', inputName: 'title' },
-      { name: 'description', inputName: 'description' },
-      { name: 'price', inputName: 'price' },
-      { name: 'count', inputName: 'count' }
-    ],
-    isHeaderNameOptional: true,
-    isColumnIndexAlphabetic: false,
-};
+const s3Client = new S3Client();
 
 export const handler = async (event: any) => {
-    const S3client = new S3Client();
-
+    
     try {
-        for (const record of event.Records) {
-
-            const bucket = record.s3.bucket.name;
-            const key = record.s3.object.key;
-
-            const getObjectCommand = new GetObjectCommand({
-                Bucket: bucket,
-                Key: key
-            });
-
-            const getObjectCommandOutput = await S3client.send(getObjectCommand);
-
-            if (!getObjectCommandOutput) {
-                throw new Error("Nothing to parse, no object");
-            }
-
-            const objectAsString = await getObjectCommandOutput.Body?.transformToString();
-
-            if (objectAsString) {
-                
-                const validatioinResult = await CSVFileValidator(
-                    objectAsString,
-                    validatorConfig
-                );
-
-                if (validatioinResult.inValidData.length > 0) {
-                    console.error('Invalid file. Provide valid CSV file');
-                    return {
-                        statusCode: 400,
-                        headers: headers,
-                        body: JSON.stringify({ message: `File ${key} is not CSV file. Provide a valid CSV file.` }),
-                    };
-                }
-
-                const s3Stream = stringToStream(objectAsString);
-
-                s3Stream.pipe(csv())
-                    .on('data', (data: any) => {
-                        console.log('CSV Record:', data);
-                    })
-                    .on('end', async () => {
-
-                        const parsedKey = key.replace('uploaded/', 'parsed/');
-
-                        await S3client.send(
-                            new CopyObjectCommand({
-                              Bucket: bucket,
-                              CopySource: `/${bucket}/${key}`,
-                              Key: parsedKey,
-                            })
-                        );
-
-                        await S3client.send(
-                            new DeleteObjectCommand({
-                              Bucket: bucket,
-                              Key: key
-                            })
-                        );
-                    });
-            } else {
-                throw new Error('Nothing to parse, no such file OR file is empty')
-            }
+        const record = event.Records[0].s3;
+        const bucketName = record.bucket.name;
+        const objectKey = record.object.key;
+    
+        if (!objectKey.startsWith("uploaded/")) {
+          console.log("File is not in the uploaded folder.");
+          return;
         }
-
-        return {
-            statusCode: 200,
-            headers: headers,
-            body: JSON.stringify({ message: `File parse success`}),
-        };
+    
+        const getObjectCommand = new GetObjectCommand({
+          Bucket: bucketName,
+          Key: objectKey,
+        });
+    
+        const response = await s3Client.send(getObjectCommand);
+        const stream = response.Body as Readable;
+    
+        await new Promise((resolve, reject) => {
+          stream
+            .pipe(csv())
+            .on("data", (data: any) => {
+              console.log("Parsed record:", data);
+            })
+            .on("end", async () => {
+              console.log("CSV file processing completed.");
+    
+              const newObjectKey = objectKey.replace("uploaded/", "parsed/");
+              const copyObjectCommand = new CopyObjectCommand({
+                Bucket: bucketName,
+                CopySource: `${bucketName}/${objectKey}`,
+                Key: newObjectKey,
+              });
+    
+              await s3Client.send(copyObjectCommand);
+              console.log(`File copied to: ${newObjectKey}`);
+    
+              const deleteObjectCommand = new DeleteObjectCommand({
+                Bucket: bucketName,
+                Key: objectKey,
+              });
+    
+              await s3Client.send(deleteObjectCommand);
+              console.log(`File deleted from: ${objectKey}`);
+    
+              resolve(undefined);
+            })
+            .on("error", (error: any) => {
+              console.error("Error parsing CSV:", error);
+              reject(error);
+            });
+        });
     } catch (error) {
-        console.error('error parsing file:', error);
-        return {
-            statusCode: 500,
-            headers: headers,
-            body: JSON.stringify({ message: `Error parsing file` }),
-        };
+        console.error("Error processing S3 event:", error);
     }
-}
-
-function stringToStream(csvString: string): Readable {
-    const stream = new Readable();
-    stream._read = () => {};
-  
-    stream.push(csvString);
-    stream.push(null);
-  
-    return stream;
 }
