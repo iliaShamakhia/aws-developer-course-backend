@@ -4,12 +4,34 @@ import { RestApi, LambdaIntegration, AuthorizationType, Cors } from 'aws-cdk-lib
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambda_nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
+import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
 
 export class ProductServiceStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
     const dynamoDBAccessRole = iam.Role.fromRoleName(this, "DynamoDBAccessRole", "DynamoDbLambdaAccessRole");
+
+    const logPolicyStatement = new iam.PolicyStatement({
+      actions: [
+        'logs:CreateLogGroup',
+        'logs:CreateLogStream',
+        'logs:PutLogEvents'
+      ],
+      resources: ['*'],
+    });
+
+    const catalogItemsQueue = new sqs.Queue(this, 'CatalogItemsQueue', {
+      fifo: true,
+      visibilityTimeout: cdk.Duration.seconds(100),
+      contentBasedDeduplication: true
+    });
+
+    new cdk.CfnOutput(this, 'QueueArn', {
+      value: catalogItemsQueue.queueArn,
+      exportName: 'CatalogItemsQueueArn',
+    });
 
     const nodejsFunctionProps = {
       runtime: lambda.Runtime.NODEJS_18_X,
@@ -40,6 +62,24 @@ export class ProductServiceStack extends cdk.Stack {
       handler: 'handler',
       ...nodejsFunctionProps
     });
+
+    const catalogBatchProcessLambda = new lambda_nodejs.NodejsFunction(this, 'CatalogBatchProcessHandler', {
+      entry: './Handlers/catalogBatchProcess.ts',
+      handler: 'handler',
+      ...nodejsFunctionProps
+    });
+
+    catalogBatchProcessLambda.role?.attachInlinePolicy(
+      new iam.Policy(this, 'LogPolicy', {
+        statements: [logPolicyStatement],
+      })
+    );
+
+    catalogBatchProcessLambda.addEventSource(
+      new SqsEventSource(catalogItemsQueue, { batchSize: 5 })
+    );
+
+    catalogItemsQueue.grantConsumeMessages(catalogBatchProcessLambda);
 
     const api = new RestApi(this, 'productsApi', {
       restApiName: 'Products Service',

@@ -1,6 +1,8 @@
 import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
 const csv = require('csv-parser');
+const AWS = require('aws-sdk');
+const sqs = new AWS.SQS();
 
 const s3Client = new S3Client();
 
@@ -23,16 +25,37 @@ export const handler = async (event: any) => {
     
         const response = await s3Client.send(getObjectCommand);
         const stream = response.Body as Readable;
-    
+        
+        const messages: any = [];
+
         await new Promise((resolve, reject) => {
           stream
             .pipe(csv())
-            .on("data", (data: any) => {
-              console.log("Parsed record:", data);
+            .on("data", async (data: any) => {
+
+              if(!isProductValid(data)){
+                console.log("Product data is not valid for row: ", data);
+              }else{
+                messages.push(data);
+                console.log(`Message sent successfully:`);
+              }
             })
             .on("end", async () => {
               console.log("CSV file processing completed.");
-    
+
+              const entries = messages.map((msg:any, index: number) => ({
+                Id: index.toString(),
+                MessageBody: JSON.stringify(msg),
+                MessageGroupId: "unique-group-id",
+              }));
+
+              const params = {
+                QueueUrl: process.env.QUEUE_URL,
+                Entries: entries,
+              };
+
+              await sqs.sendMessageBatch(params).promise();
+              
               const newObjectKey = objectKey.replace("uploaded/", "parsed/");
               const copyObjectCommand = new CopyObjectCommand({
                 Bucket: bucketName,
@@ -50,7 +73,7 @@ export const handler = async (event: any) => {
     
               await s3Client.send(deleteObjectCommand);
               console.log(`File deleted from: ${objectKey}`);
-    
+
               resolve(undefined);
             })
             .on("error", (error: any) => {
@@ -61,4 +84,16 @@ export const handler = async (event: any) => {
     } catch (error) {
         console.error("Error processing S3 event:", error);
     }
+}
+
+function isProductValid(product: any) {
+  if(!product) return false;
+
+  let { title, description, price, count } = product;
+
+  if (!title || !description || !price || !count || isNaN(count) || count < 0 || isNaN(price) || price < 0){
+    return false;
+  }
+
+  return true;
 }
