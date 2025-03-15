@@ -4,12 +4,52 @@ import { RestApi, LambdaIntegration, AuthorizationType, Cors } from 'aws-cdk-lib
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambda_nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
+import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 
 export class ProductServiceStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
     const dynamoDBAccessRole = iam.Role.fromRoleName(this, "DynamoDBAccessRole", "DynamoDbLambdaAccessRole");
+
+    const logPolicyStatement = new iam.PolicyStatement({
+      actions: [
+        'logs:CreateLogGroup',
+        'logs:CreateLogStream',
+        'logs:PutLogEvents'
+      ],
+      resources: ['*'],
+    });
+
+    const catalogItemsQueue = new sqs.Queue(this, 'CatalogItemsQueue', {
+      fifo: true,
+      visibilityTimeout: cdk.Duration.seconds(100),
+      contentBasedDeduplication: true
+    });
+
+    new cdk.CfnOutput(this, 'QueueArn', {
+      value: catalogItemsQueue.queueArn,
+      exportName: 'CatalogItemsQueueArn',
+    });
+
+    const createProductTopic = new sns.Topic(this, 'CreateProductTopic', {
+      displayName: 'Product creation topic',
+    });
+
+    createProductTopic.addSubscription(
+      new subscriptions.EmailSubscription("shamakhiailia@gmail.com")
+    );
+
+    createProductTopic.addSubscription(new subscriptions.EmailSubscription('shamakhia@mail.ru', {
+      filterPolicy: {
+        productTitle: sns.SubscriptionFilter.stringFilter({
+          matchPrefixes: ['Iphone'],
+        })
+      }
+    }));
 
     const nodejsFunctionProps = {
       runtime: lambda.Runtime.NODEJS_18_X,
@@ -19,7 +59,8 @@ export class ProductServiceStack extends cdk.Stack {
       role: dynamoDBAccessRole,
       environment: {
         PRODUCTS_TABLE: 'aws_products',
-        STOCKS_TABLE: 'aws_stocks'
+        STOCKS_TABLE: 'aws_stocks',
+        CREATE_PRODUCT_TOPIC_ARN: createProductTopic.topicArn
       }
     };
 
@@ -40,6 +81,25 @@ export class ProductServiceStack extends cdk.Stack {
       handler: 'handler',
       ...nodejsFunctionProps
     });
+
+    const catalogBatchProcessLambda = new lambda_nodejs.NodejsFunction(this, 'CatalogBatchProcessHandler', {
+      entry: './Handlers/catalogBatchProcess.ts',
+      handler: 'handler',
+      ...nodejsFunctionProps
+    });
+
+    catalogBatchProcessLambda.role?.attachInlinePolicy(
+      new iam.Policy(this, 'LogPolicy', {
+        statements: [logPolicyStatement],
+      })
+    );
+
+    catalogBatchProcessLambda.addEventSource(
+      new SqsEventSource(catalogItemsQueue, { batchSize: 5 })
+    );
+
+    catalogItemsQueue.grantConsumeMessages(catalogBatchProcessLambda);
+    createProductTopic.grantPublish(catalogBatchProcessLambda);
 
     const api = new RestApi(this, 'productsApi', {
       restApiName: 'Products Service',

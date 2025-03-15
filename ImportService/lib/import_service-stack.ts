@@ -5,10 +5,15 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambda_nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Construct } from 'constructs';
 import { AuthorizationType, Cors, LambdaIntegration, RestApi } from 'aws-cdk-lib/aws-apigateway';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
 
 export class ImportServiceStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+
+    const queueArn = cdk.Fn.importValue('CatalogItemsQueueArn');
+
+    const queue = sqs.Queue.fromQueueArn(this, 'ImportedQueue', queueArn);
 
     const bucket = new s3.Bucket(this, 'ImportBucket', {
       bucketName: 'ilia-shamakhia-import-service-bucket',
@@ -19,6 +24,7 @@ export class ImportServiceStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_18_X,
       environment: {
         BUCKET_NAME: bucket.bucketName,
+        QUEUE_URL: queue.queueUrl
       }
     };
 
@@ -42,6 +48,7 @@ export class ImportServiceStack extends cdk.Stack {
 
     bucket.grantReadWrite(importProductsFile);
     bucket.grantReadWrite(importFileParser);
+    queue.grantSendMessages(importFileParser);
 
     const api = new RestApi(this, 'importsApi', {
       restApiName: 'Imports Service',
