@@ -41,7 +41,6 @@ export const handler = async (event: any) => {
               }
             })
             .on("end", async () => {
-              console.log("CSV file processing completed.");
 
               const entries = messages.map((msg:any, index: number) => ({
                 Id: index.toString(),
@@ -73,6 +72,8 @@ export const handler = async (event: any) => {
     
               await s3Client.send(deleteObjectCommand);
               console.log(`File deleted from: ${objectKey}`);
+
+              console.log("CSV file processing completed.");
 
               resolve(undefined);
             })
