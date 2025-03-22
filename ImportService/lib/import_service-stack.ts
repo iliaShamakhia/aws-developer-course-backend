@@ -4,14 +4,17 @@ import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambda_nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Construct } from 'constructs';
-import { AuthorizationType, Cors, LambdaIntegration, RestApi } from 'aws-cdk-lib/aws-apigateway';
+import { AuthorizationType, Cors, IdentitySource, LambdaIntegration, RequestAuthorizer, ResponseType, RestApi } from 'aws-cdk-lib/aws-apigateway';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
+import { PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 
 export class ImportServiceStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
     const queueArn = cdk.Fn.importValue('CatalogItemsQueueArn');
+
+    const authorizerLambdaArn = cdk.Fn.importValue('AuthorizerLambdaArn');
 
     const queue = sqs.Queue.fromQueueArn(this, 'ImportedQueue', queueArn);
 
@@ -58,10 +61,41 @@ export class ImportServiceStack extends cdk.Stack {
       }
     });
 
+    api.addGatewayResponse("GatewayResponse4XX", {
+      type: ResponseType.DEFAULT_4XX,
+      responseHeaders: {
+        "Access-Control-Allow-Origin": "'*'",
+        "Access-Control-Allow-Headers":
+          "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+        "Access-Control-Allow-Methods": "'OPTIONS,GET,PUT'"
+      },
+    });
+
+    const assumedAuthRole = new Role(this, "basicAuthRole", {
+      assumedBy: new ServicePrincipal("apigateway.amazonaws.com"),
+    });
+
+    assumedAuthRole.addToPolicy(
+      new PolicyStatement({
+        actions: ["lambda:InvokeFunction"],
+        resources: [authorizerLambdaArn],
+      }),
+    );
+
+    const authorizer = new RequestAuthorizer(this, 'ProductsAuthorizer', {
+      handler: lambda.Function.fromFunctionArn(this, 'ImportedAuthLambda', authorizerLambdaArn),
+      identitySources: [IdentitySource.header('Authorization')],
+      assumeRole: assumedAuthRole
+    });
+
     const importIntegration = new LambdaIntegration(importProductsFile);
     api.root.addResource('import').addMethod('GET', importIntegration, {
-      authorizationType: AuthorizationType.NONE,
-      methodResponses: [{ statusCode: '200' }, { statusCode: '400' }, { statusCode: '500' }],
+      authorizationType: AuthorizationType.CUSTOM,
+      authorizer: authorizer,
+      requestParameters: { 
+        "method.request.querystring.name": true,
+        "method.request.header.Authorization": true
+      },
     });
   }
 }
