@@ -1,0 +1,7 @@
+# ignore node modules
+node_modules
+
+# ignore dev env related and misc files 
+.dockerignore
+.gitignore
+Dockerfile
